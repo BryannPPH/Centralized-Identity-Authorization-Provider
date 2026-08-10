@@ -1,0 +1,20 @@
+{
+  "name": "centralized-identity-authorization-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:auth": "tsx auth-provider/server/src/index.ts",
+    "dev:app-a": "tsx applications/app-a/src/index.ts",
+    "dev:app-b": "tsx applications/app-b/src/index.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
