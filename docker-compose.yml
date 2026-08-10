@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: identity_provider
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d identity_provider"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-provider-server:
+    build:
+      context: .
+    command: npm run dev:auth
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_provider
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  app-a:
+    build:
+      context: .
+    command: npm run dev:app-a
+    environment:
+      PORT: 3001
+      HOST: 0.0.0.0
+    ports:
+      - "3001:3001"
+    depends_on:
+      auth-provider-server:
+        condition: service_started
+
+  app-b:
+    build:
+      context: .
+    command: npm run dev:app-b
+    environment:
+      PORT: 3002
+      HOST: 0.0.0.0
+    ports:
+      - "3002:3002"
+    depends_on:
+      auth-provider-server:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
