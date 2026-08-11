@@ -45,6 +45,23 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  sync-worker:
+    build:
+      context: .
+    command: npm run dev:worker
+    environment:
+      PORT: 3003
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_provider
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   app-a:
     build:
       context: .
