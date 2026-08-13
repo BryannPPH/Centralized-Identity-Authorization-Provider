@@ -39,6 +39,20 @@ async function main(): Promise<void> {
   const defaultPasswordHash = await hashSecret("password123");
   const clientSecretHash = await hashSecret("client-secret");
 
+  await prisma.user.upsert({
+    where: { email: "admin@example.com" },
+    update: {
+      name: "Admin User",
+      status: UserStatus.ACTIVE
+    },
+    create: {
+      name: "Admin User",
+      email: "admin@example.com",
+      passwordHash: defaultPasswordHash,
+      status: UserStatus.ACTIVE
+    }
+  });
+
   const appAGroup = await prisma.accessGroup.upsert({
     where: { name: "app-a-users" },
     update: {},

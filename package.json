@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:auth": "tsx auth-provider/server/src/index.ts",
+    "dev:control-panel": "tsx auth-provider/control-panel/src/index.ts",
     "dev:worker": "tsx auth-provider/sync-worker/src/index.ts",
     "dev:app-a": "tsx applications/app-a/src/index.ts",
     "dev:app-b": "tsx applications/app-b/src/index.ts",
@@ -14,9 +15,6 @@
     "db:seed": "npm run db:generate && prisma db seed",
     "db:validate": "prisma validate",
     "db:format": "prisma format"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

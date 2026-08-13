@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: identity_provider
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -44,6 +44,22 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  control-panel:
+    build:
+      context: .
+    command: npm run dev:control-panel
+    environment:
+      PORT: 3004
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_provider
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-provider-server:
+        condition: service_started
 
   sync-worker:
     build:
