@@ -11,7 +11,9 @@
     "noEmit": true
   },
   "include": [
+    "shared/**/*.ts",
     "auth-provider/**/*.ts",
-    "applications/**/*.ts"
+    "applications/**/*.ts",
+    "tests/**/*.ts"
   ]
 }
