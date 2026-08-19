@@ -53,6 +53,12 @@ enum DeliveryStatus {
   FAILED     @map("failed")
 }
 
+enum MfaChallengeStatus {
+  PENDING @map("pending")
+  USED    @map("used")
+  EXPIRED @map("expired")
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   name         String
@@ -68,6 +74,8 @@ model User {
   accessTokens       AccessToken[]
   auditLogs          AuditLog[]          @relation("AuditTargetUser")
   events             Event[]
+  mfaTotpCredential  MfaTotpCredential?
+  mfaChallenges      MfaChallenge[]
 
   @@map("users")
 }
@@ -166,6 +174,37 @@ model SsoSession {
 
   @@index([userId, status])
   @@map("sso_sessions")
+}
+
+model MfaTotpCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  secretEncrypted String    @map("secret_encrypted")
+  enabledAt       DateTime? @map("enabled_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mfa_totp_credentials")
+}
+
+model MfaChallenge {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @map("user_id") @db.Uuid
+  challengeTokenHash String             @unique @map("challenge_token_hash")
+  status             MfaChallengeStatus @default(PENDING)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt          DateTime           @map("expires_at") @db.Timestamptz(6)
+  usedAt             DateTime?          @map("used_at") @db.Timestamptz(6)
+  ipAddress          String?            @map("ip_address")
+  userAgent          String?            @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("mfa_challenges")
 }
 
 model AuthorizationCode {

@@ -20,6 +20,16 @@ function getDatabaseUrl(): string {
   return databaseUrl;
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is required to run seed`);
+  }
+
+  return value;
+}
+
 async function hashSecret(value: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const derivedKey = (await scrypt(value, salt, 64)) as Buffer;
@@ -36,13 +46,14 @@ const prisma = new PrismaClient({
 });
 
 async function main(): Promise<void> {
-  const defaultPasswordHash = await hashSecret("password123");
-  const clientSecretHash = await hashSecret("client-secret");
+  const defaultPasswordHash = await hashSecret(requireEnv("SEED_USER_PASSWORD"));
+  const clientSecretHash = await hashSecret(requireEnv("APP_CLIENT_SECRET"));
 
   await prisma.user.upsert({
     where: { email: "admin@example.com" },
     update: {
       name: "Admin User",
+      passwordHash: defaultPasswordHash,
       status: UserStatus.ACTIVE
     },
     create: {
@@ -75,6 +86,7 @@ async function main(): Promise<void> {
     where: { email: "app-a-user@example.com" },
     update: {
       name: "App A User",
+      passwordHash: defaultPasswordHash,
       status: UserStatus.ACTIVE
     },
     create: {
@@ -89,6 +101,7 @@ async function main(): Promise<void> {
     where: { email: "app-b-user@example.com" },
     update: {
       name: "App B User",
+      passwordHash: defaultPasswordHash,
       status: UserStatus.ACTIVE
     },
     create: {
@@ -103,6 +116,7 @@ async function main(): Promise<void> {
     where: { email: "both-apps-user@example.com" },
     update: {
       name: "Both Apps User",
+      passwordHash: defaultPasswordHash,
       status: UserStatus.ACTIVE
     },
     create: {
@@ -117,6 +131,7 @@ async function main(): Promise<void> {
     where: { email: "inactive-user@example.com" },
     update: {
       name: "Inactive User",
+      passwordHash: defaultPasswordHash,
       status: UserStatus.INACTIVE
     },
     create: {
@@ -152,6 +167,7 @@ async function main(): Promise<void> {
     where: { clientId: "app-a" },
     update: {
       name: "App A",
+      clientSecretHash,
       status: ApplicationStatus.ACTIVE,
       launchUrl: "http://localhost:3001",
       logoutNotificationUrl: "http://app-a:3001/internal/logout"
@@ -170,6 +186,7 @@ async function main(): Promise<void> {
     where: { clientId: "app-b" },
     update: {
       name: "App B",
+      clientSecretHash,
       status: ApplicationStatus.ACTIVE,
       launchUrl: "http://localhost:3002",
       logoutNotificationUrl: "http://app-b:3002/internal/logout"
