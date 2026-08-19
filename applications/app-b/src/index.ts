@@ -1,17 +1,17 @@
 import Fastify from "fastify";
+import { installGracefulShutdown } from "../../../auth-provider/shared/lifecycle.js";
+import { getRelyingAppConfig, registerRelyingApp } from "../../shared/relying-app.js";
 
 const app = Fastify({
   logger: true
 });
 
-const port = Number(process.env.PORT ?? 3002);
-const host = process.env.HOST ?? "0.0.0.0";
-
-app.get("/health", async () => {
-  return {
-    service: "app-b",
-    status: "ok"
-  };
+const config = getRelyingAppConfig({
+  applicationId: "app-b",
+  displayName: "App B",
+  port: 3002
 });
 
-await app.listen({ port, host });
+await registerRelyingApp(app, config);
+installGracefulShutdown({ app });
+await app.listen({ port: config.port, host: config.host });
