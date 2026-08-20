@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   ApplicationStatus,
   AuditResult,
+  EventStatus,
   Prisma,
   SessionStatus,
   TokenStatus,
@@ -189,21 +190,40 @@ export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
     const isAllowed = hasAllowedGroup(allowedGroupIds, userGroupIds);
 
     if (!isAllowed) {
-      await writeAudit(
-        request,
-        "PolicyDenied",
-        AuditResult.FAILED,
-        {
-          clientId,
-          redirectUri,
-          userGroups: userGroupIds
-        },
-        {
-          userId: session.userId,
-          applicationId: application.id,
-          sessionId: session.id
-        }
-      );
+      await prisma.$transaction(async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            eventType: "PolicyDenied",
+            userId: session.userId,
+            applicationId: application.id,
+            sessionId: session.id,
+            result: AuditResult.FAILED,
+            metadata: {
+              clientId,
+              redirectUri,
+              userGroups: userGroupIds
+            },
+            ipAddress: request.ip
+          }
+        });
+        await tx.event.create({
+          data: {
+            eventType: "PolicyDenied",
+            userId: session.userId,
+            centralSessionId: session.id,
+            applicationId: application.id,
+            payload: {
+              reason: "policy_denied",
+              clientId,
+              redirectUri,
+              userId: session.userId,
+              centralSessionId: session.id,
+              applicationId: application.id
+            },
+            status: EventStatus.PROCESSED
+          }
+        });
+      });
       reply.redirect(
         appendRedirectParams(redirectUri, {
           error: "access_denied",

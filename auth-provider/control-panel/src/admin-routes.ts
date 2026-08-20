@@ -151,6 +151,97 @@ function parseLimit(request: FastifyRequest, defaultLimit = 50): number {
   return Math.min(Math.max(Number(rawLimit), 1), 100);
 }
 
+const AUDIT_SECTION_EVENT_TYPES = {
+  users: [
+    "AdminUserCreated",
+    "AdminUserUpdated",
+    "AdminUserPasswordChanged",
+    "LoginSuccess",
+    "LoginFailed",
+    "LogoutSso",
+    "PasswordChanged",
+    "PasswordChangeFailed",
+    "SessionRevoked",
+    "mfa_enrolled",
+    "mfa_success",
+    "mfa_failed"
+  ],
+  groups: [
+    "AdminGroupCreated",
+    "AdminGroupUpdated",
+    "AdminGroupDeleted",
+    "AdminGroupUserAdded",
+    "AdminGroupUserRemoved"
+  ],
+  applications: [
+    "AccessPolicyChanged",
+    "AdminApplicationCreated",
+    "AdminApplicationUpdated",
+    "AdminApplicationDeleted",
+    "AdminApplicationRedirectUriCreated",
+    "AdminApplicationRedirectUriUpdated",
+    "AdminApplicationRedirectUriDeleted",
+    "AdminApplicationPolicyCreated",
+    "AdminApplicationPolicyDeleted",
+    "AuthorizationCodeIssued",
+    "PolicyDenied",
+    "TokenIssued"
+  ]
+} as const;
+
+type AuditSection = keyof typeof AUDIT_SECTION_EVENT_TYPES;
+
+function parseAuditSection(request: FastifyRequest): AuditSection | undefined {
+  const query = request.query as Record<string, unknown>;
+  const section = query.section;
+
+  if (section === undefined || section === "" || section === "all") {
+    return undefined;
+  }
+
+  if (section === "users" || section === "groups" || section === "applications") {
+    return section;
+  }
+
+  throw new HttpError(400, "INVALID_QUERY", "section audit tidak valid");
+}
+
+function parseAuditDate(request: FastifyRequest, key: "from" | "to"): Date | undefined {
+  const query = request.query as Record<string, unknown>;
+  const value = query[key];
+
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new HttpError(400, "INVALID_QUERY", `${key} harus berupa waktu valid`);
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new HttpError(400, "INVALID_QUERY", `${key} harus berupa waktu valid`);
+  }
+
+  return date;
+}
+
+function parseAuditEventType(request: FastifyRequest): string | undefined {
+  const query = request.query as Record<string, unknown>;
+  const eventType = query.eventType;
+
+  if (eventType === undefined || eventType === "" || eventType === "all") {
+    return undefined;
+  }
+
+  if (typeof eventType !== "string") {
+    throw new HttpError(400, "INVALID_QUERY", "eventType harus berupa string");
+  }
+
+  return eventType.trim();
+}
+
 function getActorId(request: FastifyRequest): string | undefined {
   const actorId = request.headers["x-actor-id"];
 
@@ -808,18 +899,79 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
     assertHasUpdate(data);
 
-    const application = await prisma.application.update({
-      where: { id },
-      data,
-      select: APPLICATION_SELECT
-    });
+    const application = await prisma.$transaction(async (tx) => {
+      const previousApplication = await tx.application.findUniqueOrThrow({
+        where: { id },
+        select: {
+          status: true,
+          policies: {
+            select: {
+              groupId: true
+            }
+          }
+        }
+      });
+      const updatedApplication = await tx.application.update({
+        where: { id },
+        data,
+        select: APPLICATION_SELECT
+      });
+      let affectedRevocations = 0;
 
-    await writeAudit(
-      request,
-      "AdminApplicationUpdated",
-      { fields: Object.keys(data), application },
-      { applicationId: id }
-    );
+      if (
+        data.status === ApplicationStatus.INACTIVE &&
+        previousApplication.status !== ApplicationStatus.INACTIVE
+      ) {
+        const groupIds = previousApplication.policies.map((policy) => policy.groupId);
+
+        if (groupIds.length > 0) {
+          const memberships = await tx.userGroup.findMany({
+            where: {
+              groupId: {
+                in: groupIds
+              }
+            },
+            select: {
+              userId: true
+            }
+          });
+          const userIds = [...new Set(memberships.map((membership) => membership.userId))];
+
+          for (const userId of userIds) {
+            const eventCreated = await createAccessPolicyChangedEventIfAccessLost(tx, {
+              userId,
+              applicationId: id,
+              payload: {
+                reason: "application_inactive",
+                userId,
+                applicationId: id
+              }
+            });
+
+            if (eventCreated) {
+              affectedRevocations += 1;
+            }
+          }
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          eventType: "AdminApplicationUpdated",
+          actorId: getActorId(request),
+          applicationId: id,
+          result: AuditResult.SUCCESS,
+          metadata: toMetadata({
+            fields: Object.keys(data),
+            application: updatedApplication,
+            affectedRevocations
+          }),
+          ipAddress: request.ip
+        }
+      });
+
+      return updatedApplication;
+    });
 
     return application;
   });
@@ -896,6 +1048,52 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       request,
       "AdminApplicationRedirectUriDeleted",
       { redirectUri },
+      { applicationId }
+    );
+
+    return redirectUri;
+  });
+
+  app.patch("/admin/applications/:id/redirect-uris/:redirectUriId", async (request) => {
+    const applicationId = requireUuid(getParam(request, "id"), "id");
+    const redirectUriId = requireUuid(getParam(request, "redirectUriId"), "redirectUriId");
+    const body = assertObjectBody(request.body);
+    const redirectUriValue = requireString(body, "redirectUri");
+    const existingRedirectUri = await prisma.applicationRedirectUri.findFirst({
+      where: {
+        id: redirectUriId,
+        applicationId
+      },
+      select: {
+        id: true,
+        applicationId: true,
+        redirectUri: true
+      }
+    });
+
+    if (!existingRedirectUri) {
+      throw new HttpError(404, "NOT_FOUND", "Redirect URI tidak ditemukan");
+    }
+
+    const redirectUri = await prisma.applicationRedirectUri.update({
+      where: {
+        id: redirectUriId
+      },
+      data: {
+        redirectUri: redirectUriValue
+      },
+      select: {
+        id: true,
+        applicationId: true,
+        redirectUri: true,
+        createdAt: true
+      }
+    });
+
+    await writeAudit(
+      request,
+      "AdminApplicationRedirectUriUpdated",
+      { previousRedirectUri: existingRedirectUri, redirectUri },
       { applicationId }
     );
 
@@ -1007,8 +1205,42 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/admin/audit-logs", async (request) => {
+    const section = parseAuditSection(request);
+    const eventType = parseAuditEventType(request);
+    const from = parseAuditDate(request, "from");
+    const to = parseAuditDate(request, "to");
+    const filters: Prisma.AuditLogWhereInput[] = [];
+
+    if (from && to && from > to) {
+      throw new HttpError(400, "INVALID_QUERY", "from tidak boleh lebih baru dari to");
+    }
+
+    if (section) {
+      filters.push({
+        eventType: {
+          in: [...AUDIT_SECTION_EVENT_TYPES[section]]
+        }
+      });
+    }
+
+    if (eventType) {
+      filters.push({
+        eventType
+      });
+    }
+
+    if (from || to) {
+      filters.push({
+        createdAt: {
+          ...(from ? { gte: from } : {}),
+          ...(to ? { lte: to } : {})
+        }
+      });
+    }
+
     return prisma.auditLog.findMany({
       take: parseLimit(request),
+      where: filters.length > 0 ? { AND: filters } : undefined,
       orderBy: {
         createdAt: "desc"
       },

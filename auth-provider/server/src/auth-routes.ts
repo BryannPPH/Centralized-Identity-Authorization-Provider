@@ -7,7 +7,11 @@ import {
   TokenStatus,
   UserStatus
 } from "../../../generated/prisma/client.js";
-import { createRevocationEvent, getActiveApplicationIds } from "../../shared/events.js";
+import {
+  createRevocationEvent,
+  getActiveApplicationIds,
+  revokeUserCentralSessions
+} from "../../shared/events.js";
 import { decryptSecret, encryptSecret } from "../../shared/encryption.js";
 import {
   createTotpUri,
@@ -23,7 +27,7 @@ import {
   serializeMfaChallengeCookie,
   serializeSessionCookie
 } from "./cookies.js";
-import { generateToken, hashToken, verifySecret } from "./crypto.js";
+import { generateToken, hashSecret, hashToken, verifySecret } from "./crypto.js";
 import { prisma } from "./db.js";
 import { HttpError, assertObjectBody, requireString } from "./http.js";
 
@@ -253,6 +257,7 @@ function authHomeHtml(session: CentralSession | null): string {
       <form id="logout-form">
         <button type="submit" class="danger">Logout SSO</button>
       </form>
+      <a class="button secondary" href="/password">Change Password</a>
       <a class="button secondary" href="/mfa/enroll">MFA Enrollment</a>
       <p id="message"></p>
       <script>
@@ -297,6 +302,78 @@ function authHomeHtml(session: CentralSession | null): string {
   </head>
   <body>
     <main>${content}</main>
+  </body>
+</html>`;
+}
+
+function passwordChangeHtml(session: CentralSession): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Change Password</title>
+    <style>
+      :root { color-scheme: light; --bg: #f6f7f9; --panel: #fff; --text: #1f2933; --muted: #667085; --line: #d9dee7; --accent: #1f7a5a; --danger: #b42318; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width: min(100% - 32px, 420px); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; }
+      h1 { margin: 0 0 6px; font-size: 20px; }
+      p { margin: 0 0 16px; }
+      label { display: block; margin: 12px 0 6px; color: var(--muted); font-weight: 700; }
+      input, button, a.button { width: 100%; min-height: 40px; border-radius: 6px; font: inherit; }
+      input { border: 1px solid var(--line); padding: 8px 10px; }
+      button, a.button { display: inline-flex; align-items: center; justify-content: center; margin-top: 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; font-weight: 700; text-decoration: none; }
+      a.secondary { margin-top: 10px; border-color: var(--line); background: #fff; color: var(--text); }
+      .muted { color: var(--muted); }
+      #message { min-height: 22px; margin-top: 12px; color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Change Password</h1>
+      <p class="muted">${escapeHtml(session.user.email)}</p>
+      <form id="password-form">
+        <label for="currentPassword">Current password</label>
+        <input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required>
+        <label for="newPassword">New password</label>
+        <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" required>
+        <label for="confirmPassword">Confirm new password</label>
+        <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" required>
+        <button type="submit">Save Password</button>
+      </form>
+      <a class="button secondary" href="/">Cancel</a>
+      <div id="message"></div>
+    </main>
+    <script>
+      const form = document.getElementById("password-form");
+      const message = document.getElementById("message");
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        message.style.color = "#667085";
+        message.textContent = "Saving...";
+        const response = await fetch("/password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            currentPassword: form.currentPassword.value,
+            newPassword: form.newPassword.value,
+            confirmPassword: form.confirmPassword.value
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          message.style.color = "#b42318";
+          message.textContent = data.error ? data.error.message : "Password gagal diubah";
+          return;
+        }
+        message.style.color = "#1f7a5a";
+        message.textContent = "Password berhasil diubah. Semua session dicabut.";
+        window.setTimeout(function () {
+          window.location.href = "/";
+        }, 900);
+      });
+    </script>
   </body>
 </html>`;
 }
@@ -510,6 +587,107 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.get("/login", async (_, reply) => {
     reply.type("text/html; charset=utf-8");
     return LOGIN_HTML;
+  });
+
+  app.get("/password", async (request, reply) => {
+    const session = await getCentralSession(request);
+
+    if (!session) {
+      reply.redirect("/login?returnTo=/password");
+      return;
+    }
+
+    reply.type("text/html; charset=utf-8");
+    return passwordChangeHtml(session);
+  });
+
+  app.post("/password", async (request, reply) => {
+    const session = await requireCentralSession(request);
+    const body = assertObjectBody(request.body);
+    const currentPassword = requireString(body, "currentPassword");
+    const newPassword = requireString(body, "newPassword");
+    const confirmPassword = requireString(body, "confirmPassword");
+
+    if (newPassword !== confirmPassword) {
+      throw new HttpError(400, "INVALID_BODY", "Konfirmasi password tidak sama");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: session.userId
+      },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        status: true
+      }
+    });
+
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new HttpError(401, "UNAUTHENTICATED", "Central session tidak valid");
+    }
+
+    if (!(await verifySecret(currentPassword, user.passwordHash))) {
+      await writeAudit(
+        request,
+        "PasswordChangeFailed",
+        AuditResult.FAILED,
+        { reason: "invalid_current_password" },
+        user.id
+      );
+      throw new HttpError(401, "INVALID_CREDENTIALS", "Password saat ini tidak valid");
+    }
+
+    const passwordHash = await hashSecret(newPassword);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: {
+          id: user.id
+        },
+        data: {
+          passwordHash
+        }
+      });
+
+      const [targetApplicationIds, revokedSessions] = await Promise.all([
+        getActiveApplicationIds(tx),
+        revokeUserCentralSessions(tx, user.id, "password_changed")
+      ]);
+
+      for (const revokedSession of revokedSessions) {
+        await createRevocationEvent(tx, {
+          eventType: "PasswordChanged",
+          userId: user.id,
+          centralSessionId: revokedSession.id,
+          payload: {
+            reason: "password_changed",
+            userId: user.id,
+            centralSessionId: revokedSession.id
+          },
+          targetApplicationIds
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          eventType: "PasswordChanged",
+          userId: user.id,
+          result: AuditResult.SUCCESS,
+          metadata: {
+            revokedSessions: revokedSessions.length
+          },
+          ipAddress: request.ip
+        }
+      });
+    });
+
+    reply.header("set-cookie", clearSessionCookie(isSecureCookieEnabled()));
+
+    return {
+      status: "ok"
+    };
   });
 
   app.post("/login", async (request, reply) => {
@@ -869,6 +1047,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     requireInternalToken(request);
 
     const { id } = request.params as { id?: string };
+    const clientId =
+      typeof request.headers["x-client-id"] === "string"
+        ? request.headers["x-client-id"]
+        : undefined;
 
     if (!id) {
       throw new HttpError(400, "INVALID_BODY", "id wajib diisi");
@@ -899,9 +1081,29 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       session.revokedAt === null &&
       session.expiresAt > new Date() &&
       session.user.status === UserStatus.ACTIVE;
+    const accessPolicyTargetsCurrentApplication =
+      !active &&
+      session?.revokeReason === "access_policy_changed" &&
+      clientId
+        ? Boolean(
+            await prisma.event.findFirst({
+              where: {
+                centralSessionId: id,
+                eventType: "AccessPolicyChanged",
+                application: {
+                  clientId
+                }
+              },
+              select: {
+                id: true
+              }
+            })
+          )
+        : false;
 
     return {
       active,
+      accessPolicyTargetsCurrentApplication,
       session: session
         ? {
             id: session.id,

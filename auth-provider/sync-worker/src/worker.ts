@@ -237,6 +237,7 @@ async function callInternalLogout(deliveryId: string): Promise<void> {
           userId: true,
           centralSessionId: true,
           applicationId: true,
+          createdAt: true,
           payload: true
         }
       }
@@ -259,6 +260,15 @@ async function callInternalLogout(deliveryId: string): Promise<void> {
       userId: delivery.event.userId,
       centralSessionId: delivery.event.centralSessionId,
       applicationId: delivery.event.applicationId,
+      reason:
+        delivery.event.payload &&
+        typeof delivery.event.payload === "object" &&
+        !Array.isArray(delivery.event.payload) &&
+        "reason" in delivery.event.payload &&
+        typeof delivery.event.payload.reason === "string"
+          ? delivery.event.payload.reason
+          : undefined,
+      occurredAt: delivery.event.createdAt.toISOString(),
       payload: delivery.event.payload
     })
   });

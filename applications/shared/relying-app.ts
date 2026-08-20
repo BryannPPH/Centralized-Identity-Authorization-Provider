@@ -217,6 +217,13 @@ function htmlPage(title: string, body: string): string {
         gap: 16px;
       }
 
+      .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
       main.wrap {
         padding: 24px 0 40px;
       }
@@ -257,15 +264,19 @@ function htmlPage(title: string, body: string): string {
 
       table {
         width: 100%;
+        min-width: 640px;
         border-collapse: collapse;
+        table-layout: fixed;
       }
 
       th,
       td {
         border-top: 1px solid var(--line);
         padding: 9px 8px;
-        text-align: left;
-        vertical-align: top;
+        text-align: center;
+        vertical-align: middle;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       th {
@@ -291,7 +302,8 @@ function htmlPage(title: string, body: string): string {
         text-decoration: none;
       }
 
-      button.secondary {
+      button.secondary,
+      a.button.secondary {
         border-color: var(--line);
         background: #ffffff;
         color: var(--text);
@@ -303,6 +315,10 @@ function htmlPage(title: string, body: string): string {
 
       .error {
         color: var(--danger);
+      }
+
+      .table-wrap {
+        overflow-x: auto;
       }
 
       @media (max-width: 640px) {
@@ -504,7 +520,8 @@ async function canKeepLocalSessionFromCentralSession(
     `${config.authProviderInternalUrl}/internal/sessions/${centralSessionId}`,
     {
       headers: {
-        "x-internal-token": config.internalLogoutToken
+        "x-internal-token": config.internalLogoutToken,
+        "x-client-id": config.clientId
       }
     }
   );
@@ -515,6 +532,7 @@ async function canKeepLocalSessionFromCentralSession(
 
   const body = (await response.json()) as {
     active?: unknown;
+    accessPolicyTargetsCurrentApplication?: unknown;
     session?: {
       revokeReason?: unknown;
     } | null;
@@ -524,7 +542,10 @@ async function canKeepLocalSessionFromCentralSession(
     return true;
   }
 
-  return body.session?.revokeReason === "access_policy_changed";
+  return (
+    body.session?.revokeReason === "access_policy_changed" &&
+    body.accessPolicyTargetsCurrentApplication !== true
+  );
 }
 
 async function exchangeCode(
@@ -607,13 +628,17 @@ function loginPage(config: AppConfig): string {
 
 function homePage(config: AppConfig, session: LocalSession, activityRows: string, eventRows: string): string {
   const profile = session.profile;
+  const passwordUrl = `${config.authProviderPublicUrl}/password`;
 
   return htmlPage(
     config.displayName,
     `<header>
       <div class="wrap">
         <h1>${escapeHtml(config.displayName)}</h1>
-        <form method="post" action="/logout"><button class="secondary" type="submit">Local Logout</button></form>
+        <div class="header-actions">
+          <a class="button secondary" href="${escapeHtml(passwordUrl)}">Change Password</a>
+          <form method="post" action="/logout"><button class="secondary" type="submit">Local Logout</button></form>
+        </div>
       </div>
     </header>
     <main class="wrap">
@@ -630,11 +655,11 @@ function homePage(config: AppConfig, session: LocalSession, activityRows: string
       </section>
       <section class="panel">
         <h2>Activity Log</h2>
-        <table><thead><tr><th>Event</th><th>Message</th><th>Time</th></tr></thead><tbody>${activityRows}</tbody></table>
+        <div class="table-wrap"><table><thead><tr><th>Event</th><th>Message</th><th>Time</th></tr></thead><tbody>${activityRows}</tbody></table></div>
       </section>
       <section class="panel">
         <h2>Processed Events</h2>
-        <table><thead><tr><th>Event</th><th>Type</th><th>Result</th><th>Time</th></tr></thead><tbody>${eventRows}</tbody></table>
+        <div class="table-wrap"><table><thead><tr><th>Event</th><th>Type</th><th>Result</th><th>Time</th></tr></thead><tbody>${eventRows}</tbody></table></div>
       </section>
     </main>`
   );
@@ -787,8 +812,29 @@ export async function registerRelyingApp(app: FastifyInstance, config: AppConfig
       throw new HttpError(400, "INVALID_STATE", "State OAuth tidak valid");
     }
 
+    await writeActivity(
+      prisma,
+      config,
+      "AuthorizationCodeReceived",
+      "Authorization code received in callback",
+      request,
+      {
+        state
+      }
+    );
     const token = await exchangeCode(config, code, codeVerifier);
+    await writeActivity(
+      prisma,
+      config,
+      "TokenExchanged",
+      "Authorization code exchanged through back channel",
+      request
+    );
     const profile = await getUserinfo(config, token.access_token);
+    await writeActivity(prisma, config, "UserinfoFetched", "User profile fetched", request, {
+      externalUserId: profile.id,
+      clientId: profile.application.clientId
+    });
     const localSessionToken = generateToken();
     const expiresAt = localSessionExpiresAt();
 
