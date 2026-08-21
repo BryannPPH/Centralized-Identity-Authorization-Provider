@@ -210,6 +210,14 @@ async function jsonRequest(url, options = {}) {
     headers.set("authorization", ADMIN_AUTH);
   }
 
+  if (
+    url.startsWith(ADMIN) &&
+    ["POST", "PATCH", "DELETE"].includes(options.method ?? "GET") &&
+    !headers.has("origin")
+  ) {
+    headers.set("origin", ADMIN);
+  }
+
   if (options.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
@@ -395,7 +403,7 @@ async function expectAppLoggedOut(jar, appBase, label) {
   const text = await response.text();
 
   assert.equal(response.status, 200, label);
-  assert.match(text, /Local session belum aktif/, label);
+  assert.match(text, /You are not signed in/, label);
 }
 
 async function expectCentralActive(jar, label) {
@@ -543,7 +551,7 @@ async function expectAppLoginPage(appBase, displayName) {
 
   assert.equal(response.status, 200);
   assert.match(text, new RegExp(displayName));
-  assert.match(text, /Local session belum aktif/);
+  assert.match(text, /You are not signed in/);
   assert.match(text, /Login with Auth Provider/);
   assert.doesNotMatch(text, /type=["']password["']/i);
   assert.doesNotMatch(text, /<form/i);
@@ -938,6 +946,22 @@ test("admin routes require credentials", async () => {
   assert.match(response.headers.get("www-authenticate") ?? "", /Basic/);
 });
 
+test("admin state-changing routes reject cross-origin requests", async () => {
+  const response = await fetch(`${ADMIN}/admin/groups`, {
+    method: "POST",
+    headers: {
+      authorization: ADMIN_AUTH,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      name: `csrf-test-${Date.now()}`
+    })
+  });
+  const body = await expectJsonStatus(response, 403);
+
+  assert.equal(body.error.code, "CSRF_ORIGIN_INVALID");
+});
+
 test("revocation-related controls are present in the web UIs", async () => {
   const [controlPanelResponse, authResponse] = await Promise.all([
     fetch(`${ADMIN}/`, {
@@ -952,6 +976,9 @@ test("revocation-related controls are present in the web UIs", async () => {
 
   assert.equal(controlPanelResponse.status, 200);
   assert.match(controlPanelHtml, /Control Panel Admin/);
+  assert.match(controlPanelHtml, /class="admin-nav"/);
+  assert.match(controlPanelHtml, /role="tablist"/);
+  assert.match(controlPanelHtml, /aria-selected="true"/);
   assert.match(controlPanelHtml, /Users/);
   assert.match(controlPanelHtml, /Applications/);
   assert.match(controlPanelHtml, /Audit Logs/);
@@ -1209,6 +1236,8 @@ test("MFA enrollment requires TOTP before issuing central session on later login
     assert.equal(refreshedEnrollPage.status, 200);
     assert.equal(refreshedSecret, secret);
     assert.match(html, /MFA Enrollment/);
+    assert.match(html, /class="qr-code"/);
+    assert.match(html, /data:image\/png;base64,/);
     assert.match(html, /Authenticator URI/);
     assert.match(html, /otpauth:\/\/totp\//);
 
@@ -1319,6 +1348,16 @@ test("authorize allows matching policy and denies missing policy", async () => {
   const verifier = "allow-verifier";
 
   await loginAuth(allowedJar, "both-apps-user@example.com");
+
+  const missingStateUrl = new URL(`${AUTH}/authorize`);
+  missingStateUrl.searchParams.set("client_id", "app-a");
+  missingStateUrl.searchParams.set("redirect_uri", "http://localhost:3001/callback");
+  missingStateUrl.searchParams.set("code_challenge", codeChallenge(verifier));
+  missingStateUrl.searchParams.set("code_challenge_method", "S256");
+  const missingStateResponse = await allowedJar.fetch(missingStateUrl.toString());
+  const missingStateBody = await expectJsonStatus(missingStateResponse, 400);
+
+  assert.equal(missingStateBody.error.code, "INVALID_AUTHORIZATION_REQUEST");
 
   const allowed = await authorize(allowedJar, {
     clientId: "app-a",
