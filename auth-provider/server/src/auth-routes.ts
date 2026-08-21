@@ -167,8 +167,7 @@ const LOGIN_HTML = `<!doctype html>
           window.location.href = returnTo;
           return;
         }
-        message.style.color = "#1f7a5a";
-        message.textContent = "Login berhasil";
+        window.location.href = "/";
       });
 
       mfaForm.addEventListener("submit", async function (event) {
@@ -191,8 +190,7 @@ const LOGIN_HTML = `<!doctype html>
           window.location.href = returnTo;
           return;
         }
-        message.style.color = "#1f7a5a";
-        message.textContent = "Login berhasil";
+        window.location.href = "/";
       });
     </script>
   </body>
@@ -935,25 +933,29 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MFA Enrollment</title></head><body><main><h1>MFA sudah aktif</h1></main></body></html>`;
     }
 
-    const secret = generateTotpSecret();
-    const secretEncrypted = encryptSecret(secret);
-    const credential = await prisma.mfaTotpCredential.upsert({
-      where: {
-        userId: session.userId
-      },
-      update: {
-        secretEncrypted,
-        enabledAt: null
-      },
-      create: {
-        userId: session.userId,
-        secretEncrypted
-      },
-      select: {
-        secretEncrypted: true
-      }
-    });
-    const plainSecret = decryptSecret(credential.secretEncrypted);
+    let plainSecret: string;
+
+    if (existingCredential && !existingCredential.enabledAt) {
+      plainSecret = decryptSecret(existingCredential.secretEncrypted);
+    } else {
+      plainSecret = generateTotpSecret();
+      const secretEncrypted = encryptSecret(plainSecret);
+
+      await prisma.mfaTotpCredential.upsert({
+        where: {
+          userId: session.userId
+        },
+        update: {
+          secretEncrypted,
+          enabledAt: null
+        },
+        create: {
+          userId: session.userId,
+          secretEncrypted
+        }
+      });
+    }
+
     const otpauthUri = createTotpUri({
       issuer: MFA_ISSUER,
       accountName: session.user.email,

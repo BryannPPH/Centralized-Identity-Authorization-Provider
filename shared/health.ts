@@ -51,7 +51,7 @@ export function registerHealthRoutes(
           return {
             name: readinessCheck.name,
             status: "error",
-            error: error instanceof Error ? error.message : String(error)
+            error: "Dependency unavailable"
           };
         }
       })

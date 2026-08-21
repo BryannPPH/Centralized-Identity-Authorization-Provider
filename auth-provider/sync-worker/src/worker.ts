@@ -427,19 +427,92 @@ async function startConsumer(
 }
 
 export async function startWorker(signal: AbortSignal): Promise<WorkerHandle> {
-  const { connection, channel } = await createChannel();
-  const internalAbortController = new AbortController();
+  const shutdownController = new AbortController();
   const inFlight = new Set<Promise<void>>();
   let closed = false;
+  let firstConnectionResolve: (() => void) | undefined;
+  let firstConnectionReject: ((error: unknown) => void) | undefined;
+  let firstConnectionSettled = false;
+  const firstConnection = new Promise<void>((resolve, reject) => {
+    firstConnectionResolve = resolve;
+    firstConnectionReject = reject;
+  });
 
   const forwardAbort = (): void => {
-    internalAbortController.abort();
+    shutdownController.abort();
+  };
+
+  const run = async (): Promise<void> => {
+    while (!shutdownController.signal.aborted) {
+      let connection: ChannelModel | undefined;
+      let channel: ConfirmChannel | undefined;
+      let connectionAbortController: AbortController | undefined;
+      let publisher: Promise<void> | undefined;
+      let consumerTag: string | undefined;
+
+      try {
+        const created = await createChannel();
+        connection = created.connection;
+        channel = created.channel;
+        connectionAbortController = new AbortController();
+
+        const connectionClosed = new Promise<void>((resolve) => {
+          const finish = (): void => resolve();
+
+          connection?.once("close", finish);
+          shutdownController.signal.addEventListener("abort", finish, { once: true });
+          connectionAbortController?.signal.addEventListener("abort", finish, { once: true });
+        });
+
+        publisher = startPublisher(channel, connectionAbortController.signal);
+        consumerTag = await startConsumer(channel, inFlight);
+
+        if (!firstConnectionSettled) {
+          firstConnectionSettled = true;
+          firstConnectionResolve?.();
+        }
+
+        await connectionClosed;
+      } catch (error) {
+        workerStatus.lastConsumerError = serializeError(error);
+
+        if (!firstConnectionSettled) {
+          firstConnectionSettled = true;
+          firstConnectionReject?.(error);
+        }
+      } finally {
+        connectionAbortController?.abort();
+        workerStatus.consumerRunning = false;
+
+        if (channel && consumerTag) {
+          await channel.cancel(consumerTag).catch(() => undefined);
+        }
+
+        await Promise.allSettled([...inFlight]);
+        await publisher?.catch(() => undefined);
+        await channel?.close().catch(() => undefined);
+        await connection?.close().catch(() => undefined);
+        workerStatus.rabbitmqConnected = false;
+        workerStatus.publisherRunning = false;
+      }
+
+      if (!shutdownController.signal.aborted) {
+        await delay(1000, undefined, { signal: shutdownController.signal }).catch(() => undefined);
+      }
+    }
   };
 
   signal.addEventListener("abort", forwardAbort, { once: true });
+  const runPromise = run();
 
-  const publisher = startPublisher(channel, internalAbortController.signal);
-  const consumerTag = await startConsumer(channel, inFlight);
+  try {
+    await firstConnection;
+  } catch (error) {
+    shutdownController.abort();
+    await runPromise.catch(() => undefined);
+    signal.removeEventListener("abort", forwardAbort);
+    throw error;
+  }
 
   const close = async (): Promise<void> => {
     if (closed) {
@@ -447,22 +520,10 @@ export async function startWorker(signal: AbortSignal): Promise<WorkerHandle> {
     }
 
     closed = true;
-    internalAbortController.abort();
+    shutdownController.abort();
     signal.removeEventListener("abort", forwardAbort);
-
-    await channel.cancel(consumerTag).catch(() => undefined);
-    workerStatus.consumerRunning = false;
-    await Promise.allSettled([...inFlight]);
-    await publisher.catch(() => undefined);
-    await channel.close().catch(() => undefined);
-    await connection.close().catch(() => undefined);
-    workerStatus.rabbitmqConnected = false;
-    workerStatus.publisherRunning = false;
+    await runPromise;
   };
-
-  signal.addEventListener("abort", () => {
-    void close();
-  }, { once: true });
 
   return {
     close

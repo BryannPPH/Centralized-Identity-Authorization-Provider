@@ -28,7 +28,11 @@ registerHealthRoutes(app, {
     }
   ],
   details: () => ({
-    worker: workerStatus
+    worker: {
+      rabbitmqConnected: workerStatus.rabbitmqConnected,
+      publisherRunning: workerStatus.publisherRunning,
+      consumerRunning: workerStatus.consumerRunning
+    }
   })
 });
 

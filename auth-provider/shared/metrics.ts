@@ -20,6 +20,15 @@ function escapeLabel(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function routeLabel(request: FastifyRequest): string {
   return request.routeOptions.url ?? request.url.split("?")[0] ?? "unknown";
 }
@@ -83,12 +92,12 @@ function renderDashboard(
     .map((metric) => {
       const average = metric.totalDurationMs / metric.count;
 
-      return `<tr><td>${metric.route}</td><td>${metric.statusCode}</td><td>${metric.count}</td><td>${metric.errorCount}</td><td>${average.toFixed(2)}</td><td>${metric.maxDurationMs.toFixed(2)}</td></tr>`;
+       return `<tr><td>${escapeHtml(metric.route)}</td><td>${metric.statusCode}</td><td>${metric.count}</td><td>${metric.errorCount}</td><td>${average.toFixed(2)}</td><td>${metric.maxDurationMs.toFixed(2)}</td></tr>`;
     })
     .join("");
   const customRows = Object.entries(customMetrics)
     .sort()
-    .map(([name, value]) => `<tr><td>${name}</td><td>${value}</td></tr>`)
+    .map(([name, value]) => `<tr><td>${escapeHtml(name)}</td><td>${value}</td></tr>`)
     .join("");
 
   return `<!doctype html>
@@ -113,7 +122,7 @@ function renderDashboard(
   </head>
   <body>
     <main>
-      <h1>${service} metrics</h1>
+      <h1>${escapeHtml(service)} metrics</h1>
       <section class="summary">
         <div class="tile"><div class="label">Uptime</div><div class="value">${Math.floor((Date.now() - startedAt.getTime()) / 1000)}s</div></div>
         <div class="tile"><div class="label">Requests</div><div class="value">${totalRequests}</div></div>
@@ -162,9 +171,9 @@ export function registerMetricsRoutes(
       current.totalDurationMs += durationMs;
       current.maxDurationMs = Math.max(current.maxDurationMs, durationMs);
 
-      if (reply.statusCode >= 500) {
-        current.errorCount += 1;
-      }
+       if (reply.statusCode >= 400) {
+         current.errorCount += 1;
+       }
 
       routes.set(key, current);
     }

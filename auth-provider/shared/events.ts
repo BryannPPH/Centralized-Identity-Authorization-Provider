@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   ApplicationStatus,
   DeliveryStatus,
@@ -41,13 +42,26 @@ export async function createRevocationEvent(
     return;
   }
 
+  const eventId = randomUUID();
+  const occurredAt = new Date().toISOString();
+
   await tx.event.create({
     data: {
+      id: eventId,
       eventType: input.eventType,
       userId: input.userId,
       centralSessionId: input.centralSessionId,
       applicationId: input.applicationId,
-      payload: input.payload,
+      payload: {
+        ...input.payload,
+        eventId,
+        eventType: input.eventType,
+        userId: input.userId,
+        ...(input.centralSessionId ? { centralSessionId: input.centralSessionId } : {}),
+        ...(input.applicationId ? { applicationId: input.applicationId } : {}),
+        occurredAt,
+        metadata: {}
+      },
       status: EventStatus.PENDING,
       deliveries: {
         create: targetApplicationIds.map((applicationId) => ({
