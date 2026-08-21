@@ -419,3 +419,4 @@ Queue revocation dan Dead-Letter Queue pada RabbitMQ Management.
 Status health Sync Worker, RabbitMQ connection, publisher, dan consumer.
 
 ## Submission Evidence
+![Submission Evidence](docs/submission_evidence.png)
