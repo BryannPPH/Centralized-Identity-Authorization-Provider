@@ -67,7 +67,7 @@ services:
   auth-provider-server:
     build:
       context: .
-    command: npm run dev:auth
+    command: sh -c "npm run db:generate && npm run dev:auth"
     environment:
       PORT: 3000
       HOST: 0.0.0.0
@@ -88,7 +88,7 @@ services:
   control-panel:
     build:
       context: .
-    command: npm run dev:control-panel
+    command: sh -c "npm run db:generate && npm run dev:control-panel"
     environment:
       PORT: 3004
       HOST: 0.0.0.0
@@ -108,7 +108,7 @@ services:
   sync-worker:
     build:
       context: .
-    command: npm run dev:worker
+    command: sh -c "npm run db:generate && npm run dev:worker"
     environment:
       PORT: 3003
       HOST: 0.0.0.0
@@ -122,6 +122,8 @@ services:
       PROCESSING_TIMEOUT_MS: 300000
     ports:
       - "3003:3003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,7 +135,7 @@ services:
   app-a:
     build:
       context: .
-    command: npm run dev:app-a
+    command: sh -c "npm run db:generate && npm run dev:app-a"
     environment:
       PORT: 3001
       HOST: 0.0.0.0
@@ -157,7 +159,7 @@ services:
   app-b:
     build:
       context: .
-    command: npm run dev:app-b
+    command: sh -c "npm run db:generate && npm run dev:app-b"
     environment:
       PORT: 3002
       HOST: 0.0.0.0
