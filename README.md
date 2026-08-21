@@ -322,8 +322,6 @@ Recovery code MFA tidak diimplementasikan karena bersifat opsional.
 
 ## Screenshots
 
-## Submission Evidence
-
 ### 1. Auth Provider Login
 
 ![Auth Provider Login](docs/auth-provider-login.png)
@@ -419,3 +417,5 @@ Queue revocation dan Dead-Letter Queue pada RabbitMQ Management.
 ![Worker Health](docs/worker-health.png)
 
 Status health Sync Worker, RabbitMQ connection, publisher, dan consumer.
+
+## Submission Evidence
