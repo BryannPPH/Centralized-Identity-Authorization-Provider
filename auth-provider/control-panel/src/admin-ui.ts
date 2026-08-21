@@ -93,28 +93,93 @@ export const ADMIN_HTML = `<!doctype html>
         color: var(--muted);
       }
 
+      .admin-nav {
+        display: flex;
+        align-items: center;
+        margin: 0 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        padding: 8px;
+      }
+
       .tabs {
         display: flex;
-        gap: 8px;
-        margin: 0 0 16px;
+        flex: 1;
+        gap: 4px;
+        min-width: 0;
         overflow-x: auto;
+        scrollbar-width: thin;
       }
 
       .tab {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        color: var(--text);
+        display: inline-flex;
+        flex: 1 0 auto;
+        align-items: center;
+        gap: 9px;
+        min-width: 130px;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--muted);
         cursor: pointer;
-        padding: 8px 12px;
+        padding: 9px 11px;
+        text-align: left;
         white-space: nowrap;
+      }
+
+      .tab:hover {
+        border-color: var(--line);
+        background: #f8fafb;
+        color: var(--text);
+      }
+
+      .tab:focus-visible {
+        outline: 3px solid rgb(31 122 90 / 22%);
+        outline-offset: 2px;
       }
 
       .tab.active {
         border-color: var(--accent);
-        background: var(--accent-weak);
         color: var(--accent);
-        font-weight: 700;
+      }
+
+      .tab-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      .tab.active .tab-icon {
+        border-color: var(--accent);
+        background: #ffffff;
+        color: var(--accent);
+      }
+
+      .tab-copy {
+        display: grid;
+        gap: 1px;
+      }
+
+      .tab-label {
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .tab-hint {
+        color: inherit;
+        font-size: 11px;
+        opacity: 0.7;
       }
 
       .panel {
@@ -753,14 +818,28 @@ export const ADMIN_HTML = `<!doctype html>
     <main>
       <section id="summary" class="summary"></section>
 
-      <nav class="tabs" aria-label="Admin sections">
-        <button class="tab active" data-tab="users">Users</button>
-        <button class="tab" data-tab="groups">Groups</button>
-        <button class="tab" data-tab="applications">Applications</button>
-        <button class="tab" data-tab="audit">Audit Logs</button>
+      <nav class="admin-nav" aria-label="Admin sections">
+        <div class="tabs" role="tablist">
+          <button class="tab active" id="tab-users" role="tab" aria-selected="true" aria-controls="users" data-tab="users">
+            <span class="tab-icon" aria-hidden="true">U</span>
+            <span class="tab-copy"><span class="tab-label">Users</span><span class="tab-hint">Identity</span></span>
+          </button>
+          <button class="tab" id="tab-groups" role="tab" aria-selected="false" aria-controls="groups" data-tab="groups">
+            <span class="tab-icon" aria-hidden="true">G</span>
+            <span class="tab-copy"><span class="tab-label">Groups</span><span class="tab-hint">Membership</span></span>
+          </button>
+          <button class="tab" id="tab-applications" role="tab" aria-selected="false" aria-controls="applications" data-tab="applications">
+            <span class="tab-icon" aria-hidden="true">A</span>
+            <span class="tab-copy"><span class="tab-label">Applications</span><span class="tab-hint">Clients &amp; policy</span></span>
+          </button>
+          <button class="tab" id="tab-audit" role="tab" aria-selected="false" aria-controls="audit" data-tab="audit">
+            <span class="tab-icon" aria-hidden="true">L</span>
+            <span class="tab-copy"><span class="tab-label">Audit Logs</span><span class="tab-hint">History</span></span>
+          </button>
+        </div>
       </nav>
 
-      <section id="users" class="panel active">
+      <section id="users" class="panel active" role="tabpanel" aria-labelledby="tab-users">
         <div class="panel-head">
           <h2>Users</h2>
           <button id="toggle-user-form" class="icon-button" type="button" title="Create user" aria-label="Create user" aria-expanded="false" data-closed-title="Create user" data-open-title="Close create user">+</button>
@@ -780,7 +859,7 @@ export const ADMIN_HTML = `<!doctype html>
         </div>
       </section>
 
-      <section id="groups" class="panel">
+      <section id="groups" class="panel" role="tabpanel" aria-labelledby="tab-groups">
         <div class="panel-head">
           <h2>Groups</h2>
           <button id="toggle-group-form" class="icon-button" type="button" title="Create group" aria-label="Create group" aria-expanded="false" data-closed-title="Create group" data-open-title="Close create group">+</button>
@@ -795,7 +874,7 @@ export const ADMIN_HTML = `<!doctype html>
         </div>
       </section>
 
-      <section id="applications" class="panel">
+      <section id="applications" class="panel" role="tabpanel" aria-labelledby="tab-applications">
         <div class="panel-head">
           <h2>Applications</h2>
           <button id="open-application-dialog" class="icon-button" type="button" title="Create application" aria-label="Create application">+</button>
@@ -805,7 +884,7 @@ export const ADMIN_HTML = `<!doctype html>
         </div>
       </section>
 
-      <section id="audit" class="panel">
+      <section id="audit" class="panel" role="tabpanel" aria-labelledby="tab-audit">
         <div class="panel-head">
           <h2>Audit Logs</h2>
           <button id="refresh-audit" class="secondary small" type="button">Refresh Logs</button>
@@ -1587,9 +1666,13 @@ export const ADMIN_HTML = `<!doctype html>
 
       document.querySelectorAll(".tab").forEach(function (button) {
         button.addEventListener("click", function () {
-          document.querySelectorAll(".tab").forEach(function (item) { item.classList.remove("active"); });
+          document.querySelectorAll(".tab").forEach(function (item) {
+            item.classList.remove("active");
+            item.setAttribute("aria-selected", "false");
+          });
           document.querySelectorAll(".panel").forEach(function (item) { item.classList.remove("active"); });
           button.classList.add("active");
+          button.setAttribute("aria-selected", "true");
           document.getElementById(button.dataset.tab).classList.add("active");
         });
       });

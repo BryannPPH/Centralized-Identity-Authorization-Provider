@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import QRCode from "qrcode";
 import {
   AuditResult,
   MfaChallengeStatus,
@@ -9,7 +10,7 @@ import {
 } from "../../../generated/prisma/client.js";
 import {
   createRevocationEvent,
-  getActiveApplicationIds,
+  getApplicationIds,
   revokeUserCentralSessions
 } from "../../shared/events.js";
 import { decryptSecret, encryptSecret } from "../../shared/encryption.js";
@@ -376,7 +377,13 @@ function passwordChangeHtml(session: CentralSession): string {
 </html>`;
 }
 
-function mfaEnrollmentHtml(secret: string, otpauthUri: string): string {
+async function mfaEnrollmentHtml(secret: string, otpauthUri: string): Promise<string> {
+  const qrDataUrl = await QRCode.toDataURL(otpauthUri, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 240
+  });
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -394,6 +401,8 @@ function mfaEnrollmentHtml(secret: string, otpauthUri: string): string {
       input { border: 1px solid var(--line); padding: 8px 10px; }
       button { margin-top: 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; font-weight: 700; }
       code { display: block; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #f9fafb; }
+      .qr-wrap { display: grid; justify-items: center; gap: 8px; margin: 4px 0 18px; }
+      .qr-code { width: 240px; height: 240px; border: 10px solid #ffffff; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); image-rendering: pixelated; }
       .muted { color: var(--muted); }
       #message { min-height: 22px; margin-top: 12px; color: var(--danger); }
     </style>
@@ -402,6 +411,10 @@ function mfaEnrollmentHtml(secret: string, otpauthUri: string): string {
     <main>
       <h1>MFA Enrollment</h1>
       <p class="muted">Tambahkan secret ini ke aplikasi authenticator, lalu masukkan kode 6 digit.</p>
+      <div class="qr-wrap">
+        <img class="qr-code" src="${escapeHtml(qrDataUrl)}" alt="QR code untuk MFA TOTP">
+        <span class="muted">Scan QR code dengan aplikasi authenticator</span>
+      </div>
       <label>Manual secret</label>
       <code id="totp-secret">${escapeHtml(secret)}</code>
       <label>Authenticator URI</label>
@@ -650,7 +663,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       });
 
       const [targetApplicationIds, revokedSessions] = await Promise.all([
-        getActiveApplicationIds(tx),
+        getApplicationIds(tx),
         revokeUserCentralSessions(tx, user.id, "password_changed")
       ]);
 
@@ -1152,7 +1165,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           userId: session.userId,
           centralSessionId: session.id
         },
-        targetApplicationIds: await getActiveApplicationIds(tx)
+          targetApplicationIds: await getApplicationIds(tx)
       });
 
       await tx.auditLog.create({

@@ -134,7 +134,7 @@ export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
   app.get("/authorize", async (request, reply) => {
     const clientId = getQueryString(request, "client_id");
     const redirectUri = getQueryString(request, "redirect_uri");
-    const state = getOptionalQueryString(request, "state");
+    const state = getQueryString(request, "state");
     const codeChallenge = getQueryString(request, "code_challenge");
     const codeChallengeMethod = getOptionalQueryString(request, "code_challenge_method") ?? "S256";
 

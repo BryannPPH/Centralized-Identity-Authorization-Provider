@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import Fastify from "fastify";
+import type { FastifyRequest } from "fastify";
 import { checkDatabase, registerHealthRoutes } from "../../../shared/health.js";
 import { installGracefulShutdown } from "../../shared/lifecycle.js";
 import { registerAdminRoutes } from "./admin-routes.js";
@@ -56,6 +57,19 @@ function isHealthRoute(url: string): boolean {
   return url === "/health" || url === "/health/live" || url === "/health/ready";
 }
 
+function requireSameOrigin(request: FastifyRequest): void {
+  if (!["POST", "PATCH", "DELETE"].includes(request.method)) {
+    return;
+  }
+
+  const origin = request.headers.origin;
+  const host = request.headers.host;
+
+  if (!origin || !host || ![`http://${host}`, `https://${host}`].includes(origin)) {
+    throw new HttpError(403, "CSRF_ORIGIN_INVALID", "Origin request tidak valid");
+  }
+}
+
 registerHealthRoutes(app, {
   service: "control-panel",
   readinessChecks: [
@@ -83,6 +97,8 @@ app.addHook("onRequest", async (request, reply) => {
     reply.header("www-authenticate", "Basic realm=\"Control Panel\"");
     throw new HttpError(401, "UNAUTHORIZED", "Admin credentials tidak valid");
   }
+
+  requireSameOrigin(request);
 });
 
 app.get("/", async (_, reply) => {

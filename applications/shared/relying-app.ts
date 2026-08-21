@@ -516,36 +516,40 @@ async function canKeepLocalSessionFromCentralSession(
   config: AppConfig,
   centralSessionId: string
 ): Promise<boolean> {
-  const response = await fetch(
-    `${config.authProviderInternalUrl}/internal/sessions/${centralSessionId}`,
-    {
-      headers: {
-        "x-internal-token": config.internalLogoutToken,
-        "x-client-id": config.clientId
+  try {
+    const response = await fetch(
+      `${config.authProviderInternalUrl}/internal/sessions/${centralSessionId}`,
+      {
+        headers: {
+          "x-internal-token": config.internalLogoutToken,
+          "x-client-id": config.clientId
+        }
       }
+    );
+
+    if (!response.ok) {
+      return false;
     }
-  );
 
-  if (!response.ok) {
-    return true;
+    const body = (await response.json()) as {
+      active?: unknown;
+      accessPolicyTargetsCurrentApplication?: unknown;
+      session?: {
+        revokeReason?: unknown;
+      } | null;
+    };
+
+    if (body.active === true) {
+      return true;
+    }
+
+    return (
+      body.session?.revokeReason === "access_policy_changed" &&
+      body.accessPolicyTargetsCurrentApplication !== true
+    );
+  } catch {
+    return false;
   }
-
-  const body = (await response.json()) as {
-    active?: unknown;
-    accessPolicyTargetsCurrentApplication?: unknown;
-    session?: {
-      revokeReason?: unknown;
-    } | null;
-  };
-
-  if (body.active === true) {
-    return true;
-  }
-
-  return (
-    body.session?.revokeReason === "access_policy_changed" &&
-    body.accessPolicyTargetsCurrentApplication !== true
-  );
 }
 
 async function exchangeCode(
@@ -619,7 +623,7 @@ function loginPage(config: AppConfig): string {
     <main class="wrap">
       <section class="panel">
         <h2>Login</h2>
-        <p class="muted">Local session belum aktif.</p>
+        <p class="muted">You are not signed in</p>
         <a class="button" href="/login">Login with Auth Provider</a>
       </section>
     </main>`

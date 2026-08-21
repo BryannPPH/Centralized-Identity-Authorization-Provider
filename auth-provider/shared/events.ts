@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  ApplicationStatus,
   DeliveryStatus,
   EventStatus,
   Prisma,
@@ -19,11 +18,8 @@ type RevocationEventInput = {
   targetApplicationIds: string[];
 };
 
-export async function getActiveApplicationIds(tx: TransactionClient): Promise<string[]> {
+export async function getApplicationIds(tx: TransactionClient): Promise<string[]> {
   const applications = await tx.application.findMany({
-    where: {
-      status: ApplicationStatus.ACTIVE
-    },
     select: {
       id: true
     }

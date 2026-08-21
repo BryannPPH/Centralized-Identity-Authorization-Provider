@@ -8,7 +8,7 @@ import {
 } from "../../../generated/prisma/client.js";
 import {
   createRevocationEvent,
-  getActiveApplicationIds,
+  getApplicationIds,
   revokeUserCentralSessions
 } from "../../shared/events.js";
 import { hasAllowedGroup } from "../../shared/policy.js";
@@ -477,7 +477,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
       if (data.status === UserStatus.INACTIVE) {
         const [targetApplicationIds, revokedSessions] = await Promise.all([
-          getActiveApplicationIds(tx),
+          getApplicationIds(tx),
           revokeUserCentralSessions(tx, id, "user_inactive")
         ]);
 
@@ -524,7 +524,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         select: USER_SELECT
       });
       const [targetApplicationIds, revokedSessions] = await Promise.all([
-        getActiveApplicationIds(tx),
+        getApplicationIds(tx),
         revokeUserCentralSessions(tx, id, "password_changed")
       ]);
 

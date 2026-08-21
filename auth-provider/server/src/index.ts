@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { connect } from "amqplib";
 import { DeliveryStatus } from "../../../generated/prisma/client.js";
 import { checkDatabase, registerHealthRoutes } from "../../../shared/health.js";
 import { installGracefulShutdown } from "../../shared/lifecycle.js";
@@ -15,12 +16,27 @@ const app = Fastify({
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "0.0.0.0";
 
+async function checkRabbitMq(): Promise<void> {
+  const rabbitMqUrl = process.env.RABBITMQ_URL;
+
+  if (!rabbitMqUrl) {
+    throw new Error("RABBITMQ_URL is required");
+  }
+
+  const connection = await connect(rabbitMqUrl);
+  await connection.close();
+}
+
 registerHealthRoutes(app, {
   service: "auth-provider-server",
   readinessChecks: [
     {
       name: "database",
       check: () => checkDatabase(prisma)
+    },
+    {
+      name: "rabbitmq",
+      check: checkRabbitMq
     }
   ]
 });
