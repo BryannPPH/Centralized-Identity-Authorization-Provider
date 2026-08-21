@@ -320,4 +320,102 @@ Integration suite mencakup OAuth/PKCE App A dan App B, local logout, SSO logout,
 
 Recovery code MFA tidak diimplementasikan karena bersifat opsional.
 
+## Screenshots
+
 ## Submission Evidence
+
+### 1. Auth Provider Login
+
+![Auth Provider Login](docs/auth-provider-login.png)
+
+Form login Auth Provider.
+
+### 2. Auth Provider Session
+
+![Auth Provider Session](docs/auth-provider-session.png)
+
+Central session aktif dan tombol Logout SSO.
+
+### 3. MFA Enrollment
+
+![MFA Enrollment](docs/mfa-enrollment.png)
+
+Halaman enrollment MFA dengan QR code, manual secret, dan authenticator URI.
+
+### 4. MFA Login Challenge
+
+![MFA Login Challenge](docs/mfa-login-challenge.png)
+
+Form kode authenticator setelah password user MFA diterima.
+
+### 5. App A Login
+
+![App A Login](docs/app-a-login.png)
+
+Halaman App A sebelum login.
+
+### 6. App A Logged In
+
+![App A Logged In](docs/app-a-logged-in.png)
+
+Profil user, local session, dan central session ID App A.
+
+### 7. App A Activity and Events
+
+![App A Activity and Events](docs/app-a-activity-events.png)
+
+Activity Log dan Processed Events App A.
+
+### 8. App B Logged In
+
+![App B Logged In](docs/app-b-logged-in.png)
+
+App B logged in menggunakan central session tanpa input password ulang.
+
+### 9. App B Activity and Events
+
+![App B Activity and Events](docs/app-b-activity-events.png)
+
+Activity Log dan Processed Events App B.
+
+### 10. Control Panel Users
+
+![Control Panel Users](docs/control-panel-users.png)
+
+Daftar user dan kontrol pengelolaan user.
+
+### 11. Control Panel Groups
+
+![Control Panel Groups](docs/control-panel-groups.png)
+
+Daftar group, membership, dan policy aplikasi.
+
+### 12. Control Panel Applications
+
+![Control Panel Applications](docs/control-panel-applications.png)
+
+Daftar application, status, redirect URI, dan policy group.
+
+### 13. Control Panel Audit Logs
+
+![Control Panel Audit Logs](docs/control-panel-audit.png)
+
+Audit Logs dengan section, event type, dan filter.
+
+### 14. Metrics Dashboard
+
+![Metrics Dashboard](docs/metrics-dashboard.png)
+
+Dashboard requests, errors, latency, dan event delivery backlog.
+
+### 15. RabbitMQ Management
+
+![RabbitMQ Management](docs/rabbitmq-management.png)
+
+Queue revocation dan Dead-Letter Queue pada RabbitMQ Management.
+
+### 16. Worker Health
+
+![Worker Health](docs/worker-health.png)
+
+Status health Sync Worker, RabbitMQ connection, publisher, dan consumer.
